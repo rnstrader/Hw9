@@ -1,0 +1,265 @@
+---
+title: "Hw8"
+format: html
+editor: visual
+---
+
+## Reading Data
+
+Reading in the Seoul bike sharing data set, using locale argument to fix error with element 1.
+
+```{r}
+library(tidyverse)
+bike <- read_csv("https://www4.stat.ncsu.edu/~online/datasets/SeoulBikeData.csv", locale=locale(encoding="latin1"))
+```
+
+## EDA
+
+### Checking the Data
+
+To start, we need to check our data set and prepare it for use in generating models. First we check for any missing values.
+
+```{r}
+colSums(is.na(bike))
+```
+
+It appears there are no missing values in the dataset. Next we will check the types of data in each column, as well as show summary stats for each numeric column and levels for categorical columns.
+
+```{r}
+str(bike)
+summary(bike)
+lapply(bike, function(x) if(is.character(x) || is.factor(x)) unique(x))
+```
+
+Now that we have a good idea of the structure of the data as well as the kind of values we see for both numeric and categorical variables, lets convert the Date column to the Date type of data.
+
+```{r}
+bike <- bike |> mutate(Date = dmy(Date))
+```
+
+The Date column is now a Date type of data. Now we should convert the other character data columns into factor data.
+
+```{r}
+bike <- bike |> mutate(across(where(is.character), as.factor))
+```
+
+Now that we have categorical variables as factors, our last step to tidy the dataset will be to rename the columns into lower snake case for ease of use, the clean_names function from the janitor package does this automatically.
+
+```{r}
+library(janitor)
+bike <- bike |> clean_names()
+names(bike)
+```
+
+The data is now cleaned nicely, so lets take a look at some summary statistics for bike rental count and bike rental count subsetted by categorical variable levels.
+
+```{r}
+summary(bike$rented_bike_count)
+bike |> group_by(seasons) |>
+  summarize(mean_bike_count = mean(rented_bike_count))
+bike |> group_by(holiday) |>
+  summarize(mean_bike_count = mean(rented_bike_count))
+bike |> group_by(functioning_day) |>
+  summarize(mean_bike_count = mean(rented_bike_count))
+```
+
+This investigation has revealed some interesting temporal patterns in the data, as well as very high extreme values of bike rentals, but most interesting is that no bikes are rented on days that the value of Functioning Day is "No". This means that we should subset the data to only include days where the bike sharing system is functional.
+
+```{r}
+bike <- bike |> filter(functioning_day == "Yes")
+```
+
+Next, in order to simplify future analyses of this data, the rented bike values will be summarized by day to give one value per day, as opposed to one value every hour each day.
+
+```{r}
+daily_bike <- bike |> group_by(date, seasons, holiday) |> summarize(
+  total_bike_count = sum(rented_bike_count), 
+  total_rainfall = sum(rainfall_mm),
+  total_snowfall = sum(snowfall_cm),
+  mean_temperature = mean(temperature_c),
+  mean_humidity = mean(humidity_percent),
+  mean_windspeed = mean(wind_speed_m_s),
+  mean_visibility = mean(visibility_10m),
+  mean_dewpoint = mean(dew_point_temperature_c),
+  mean_solar_radiation = mean(solar_radiation_mj_m2)
+) |>
+  ungroup()
+
+head(daily_bike)
+```
+
+Now that we have a transformed data set that will be easier to analyze, lets recreate the summary stats from earlier for our new dataset. Then lets create some plots to explore if the relationships we might expect from the data are actually visible when plotted.
+
+```{r}
+#Summary Stats for new dataset
+summary(daily_bike$total_bike_count)
+daily_bike |> group_by(seasons) |>
+  summarize(mean_bike_count = mean(total_bike_count))
+daily_bike |> group_by(holiday) |> 
+  summarize(mean_bike_count = mean(total_bike_count))
+
+#Plots to explore possible meteorological and temporal effects on rental bike use
+library(ggpubr)
+daily_bike |> ggplot(aes(x = total_rainfall, y = total_bike_count)) + geom_point() + stat_cor(method = "pearson", label.x.npc = 0.25) + facet_wrap(~seasons) + theme_minimal() + labs(title = "Rented Bike Count vs Rainfall", x = "Total Rainfall (mm)", y = "Rented Bike Count")
+
+daily_bike |> ggplot(aes(x = mean_temperature, y = total_bike_count)) + geom_point() + stat_cor(method = "pearson") + theme_minimal() + labs(title = "Rented Bike Count vs Average Temperature", x = "Average Temperature (Celsius)", y = "Rented Bike Count")
+
+daily_bike |> ggplot(aes(x = seasons, y = total_bike_count, fill = holiday)) + geom_col() + theme_minimal() + labs(title = "Rented Bike Count vs Season By Holiday", x = "Season", y = "Rented Bike Count")
+```
+
+Based on these explorations, some assumptions made about possible relationships we might see have been confirmed. Regardless of season, bike usage was low during high rainfall events, while its usage during dry periods was more variable. Seasonally, winter sees considerably less use of rental bikes than any other season, and summer has the most use of rental bikes. This is supported by the fact that rental bike use generally appears to increase with warmer temperatures, although we can see a possible indication that very warm weather (\> 25 degrees Celsius) might actually see decrease in bike use as temperature increases, which indicates that the ideal temperature of bike use is likely around room temperature, or 22 degrees C. It is important to note with this that the variation of bike usage appears very scattered around this same value, which could be the effect of precipitation or other factors independent of temperature.
+
+### Split the Data
+
+Before we start modeling, we will need to split the data into training and test set. We will use a 75/25 split of training and test set respectively while stratifying the split by seasons.
+
+```{r}
+library(tidymodels)
+#setting seed for reproducibility
+set.seed(123)
+bike_split <- initial_split(daily_bike, prop = 0.75, strata = seasons)
+bike_train <- training(bike_split)
+bike_test <- testing(bike_split)
+```
+
+Now that we have created our training and test sets, we will create a 10-fold cross validation object which we can use for model tuning and evaluation at a later stage.
+
+```{r}
+#creating a function for CV splits
+get_cv_splits <- function(data, num_folds) {
+  n <- nrow(data)
+  size_fold <- floor(n/num_folds)
+  random_indices <- sample(n)
+  folds <- vector("list", num_folds)
+  
+  for (i in seq_len(num_folds)) {
+    if(i < num_folds) {
+      test_idx <- random_indices[((i-1)*size_fold + 1):(i*size_fold)]
+    } else {
+      test_idx <- random_indices[((i-1)*size_fold + 1):n]
+    }
+    train_idx <- setdiff(random_indices, test_idx)
+    folds[[i]] <- list(analysis = train_idx, assessment = test_idx)
+  }
+  
+  return(folds)
+}
+
+#applying the function to generate a 10 fold CV split
+bike_folds_list <- get_cv_splits(bike_train, 10)
+bike_folds <- manual_rset(
+  splits = map(bike_folds_list, ~ make_splits(.x, data = bike_train)),
+  ids = paste0("Fold", 1:10)
+)
+```
+
+Now that we have our 10 fold CV splits, we can now proceed to modeling the bike sharing data.
+
+### Fitting MLR Models
+
+To start with making models, we will first create several recipes. Our first recipe will be the simplest. The date variable is replaced with the weekday, weekend factor variable, as well as creating dummy variables for seasons, holidays, and the new factor variable for day type.
+
+```{r}
+bike_rec <- recipe(total_bike_count ~ ., data = bike_train) |> 
+  step_date(date, features = "dow", keep_original_cols = FALSE) |>
+  step_mutate(
+    day_type = factor(
+      if_else(date_dow %in% c("Sat", "Sun"), "weekend", "weekday")
+    )
+  ) |>
+  step_rm(date_dow) |> 
+  step_normalize(all_numeric_predictors()) |> 
+  step_dummy(all_nominal_predictors())
+bike_rec
+```
+
+Now let's create a second recipe with the same steps as above, but with interactions between seasons and holiday, seasons and temperature, temperature and rainfall.
+
+```{r}
+bike_rec2 <- recipe(total_bike_count ~ ., data = bike_train) |> 
+  step_date(date, features = "dow", keep_original_cols = FALSE) |>
+  step_mutate(
+    day_type = factor(
+      if_else(date_dow %in% c("Sat", "Sun"), "weekend", "weekday")
+    )
+  ) |>
+  step_rm(date_dow) |>
+  step_normalize(all_numeric_predictors()) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_interact(terms = ~ starts_with("seasons_"):starts_with("holiday_")) |>
+  step_interact(terms = ~ starts_with("seasons_"):mean_temperature) |>
+  step_interact(terms = ~ mean_temperature:total_rainfall)
+bike_rec2
+```
+
+Our last recipe will do everything that the 2nd recipe did but will add quadratic terms for each numeric predictor.
+
+```{r}
+bike_rec3 <- recipe(total_bike_count ~ ., data = bike_train) |> 
+  step_date(date, features = "dow", keep_original_cols = FALSE) |>
+  step_mutate(
+    day_type = factor(
+      if_else(date_dow %in% c("Sat", "Sun"), "weekend", "weekday")
+    )
+  ) |>
+  step_rm(date_dow) |>
+  step_normalize(all_numeric_predictors()) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_interact(terms = ~ starts_with("seasons_"):starts_with("holiday_")) |>
+  step_interact(terms = ~ starts_with("seasons_"):mean_temperature) |>
+  step_interact(terms = ~ mean_temperature:total_rainfall) |>
+  step_mutate_at(
+    all_numeric_predictors(),
+    fn = list(quad = ~ .^2)
+  )
+bike_rec3
+```
+
+Next, we will set up a linear model fit and use with the lm engine.
+
+```{r}
+lm_spec <- linear_reg() |> set_engine("lm")
+```
+
+Next we are going to pick a best model. In order to do this we need to fit our models using our 10 fold CV and consider the training set CV error, which will quantify which model is the best.
+
+```{r}
+#creating workflows for each recipe
+lm_wf1 <- workflow() |> add_model(lm_spec) |>
+  add_recipe(bike_rec)
+lm_wf2 <- workflow() |> add_model(lm_spec) |> 
+  add_recipe(bike_rec2)
+lm_wf3 <- workflow() |> add_model(lm_spec) |>
+  add_recipe(bike_rec3)
+
+#Fit models using the 10 fold CV
+set.seed(123)
+lm_res1 <- fit_resamples(
+  lm_wf1, resamples = bike_folds, metrics = metric_set(rmse, rsq), control = control_resamples(save_pred = TRUE)
+)
+lm_res2 <- fit_resamples(
+  lm_wf2, resamples = bike_folds, metrics = metric_set(rmse, rsq), control = control_resamples(save_pred = TRUE)
+)
+lm_res3 <- fit_resamples(
+  lm_wf3, resamples = bike_folds, metrics = metric_set(rmse, rsq), control = control_resamples(save_pred = TRUE)
+)
+
+#Comparing training CV performance
+collect_metrics(lm_res1)
+collect_metrics(lm_res2)
+collect_metrics(lm_res3)
+```
+
+Based on the rmse for these models, it appears that recipe 2 lm_res2 worked best to fit the data out of these three models. Next we will fit this model to the entire training data set and get the coefficients.
+
+```{r}
+final_fit <- last_fit(lm_wf2, split = bike_split)
+collect_metrics(final_fit)
+final_fit |> extract_fit_parsnip() |> tidy()
+```
+
+From this, we have found the RMSE of the final model fit as well as extracted coefficients for the final model to observe the relationships predicted between rented bike counts and a variety of measured variables
+
+## Hw9 Modeling Practice
+
+
