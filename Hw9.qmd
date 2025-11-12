@@ -335,5 +335,12 @@ Now that we have the best models selected, we will fit them to the full training
 final_lasso_wf <- finalize_workflow(lasso_wf, best_lasso)
 final_fit_lasso <- fit(final_lasso_wf, data = bike_train)
 
+final_tree_wf <- finalize_workflow(tree_wf, best_tree)
+final_fit_tree <- fit(final_tree_wf, data = bike_train)
 
+final_bag_wf <- finalize_workflow(bag_wf, best_bag)
+final_fit_bag <- fit(final_bag_wf, data = bike_train)
+
+final_rf_wf <- finalize_workflow(rf_wf, best_rf)
+final_fit_rf <- fit(final_rf_wf, data = bike_train)
 ```
