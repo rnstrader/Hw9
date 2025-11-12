@@ -321,7 +321,7 @@ rf_grid <- grid_random(
 rf_tune <- tune_grid(rf_wf, resamples = bike_folds, grid = rf_grid, metrics = metric_set(rmse, rsq))
 ```
 
-Lastly, we will include the best MLR model from Hw 8 for comparison
+Now we have created a tuned model of 4 different types, we will now select using rmse to extract the best parameters for each model
 ```{r}
 
 ```
