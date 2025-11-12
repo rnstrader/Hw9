@@ -376,4 +376,4 @@ all_results_summary <- all_results |> arrange(.metric)
 print(all_results_summary)
 ```
 
-Based on this comparison, the model with both the lowest rmse and mae is the random forest model.
+Based on this comparison, the model with both the lowest rmse and mae is the random forest model, making it the overall best model.
