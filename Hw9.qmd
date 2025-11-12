@@ -262,4 +262,11 @@ From this, we have found the RMSE of the final model fit as well as extracted co
 
 ## Hw9 Modeling Practice
 
+We will now add more models to our training set, first we will make a tuned LASSO model
+```{r}
+lasso_spec <- linear_reg(penalty = tune(), mixture = 1) |> set_engine("glmnet")
+lasso_wf <- workflow() |> add_model(lasso_spec) |> add_recipe(bike_rec)
+lasso_grid <- grid_regular(penalty(range = c(-6, 0)), levels = 50)
 
+lasso_tune <- tune_grid(lasso_wf, resamples = bike_folds, grid = lasso_grid, metrics = metric_set(rmse, rsq))
+```
