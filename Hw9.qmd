@@ -290,6 +290,8 @@ tree_tune <- tune_grid(tree_wf, resamples = bike_folds, grid = tree_grid, metric
 
 Likewise, now with a Bagged Tree model
 ```{r}
+devtools::install_github("tidymodels/baguette")
+library(baguette)
 bag_spec <- bag_tree(cost_complexity = tune(), tree_depth = tune(), min_n = tune()) |>
   set_engine("rpart") |>
   set_mode("regression")
@@ -323,5 +325,8 @@ rf_tune <- tune_grid(rf_wf, resamples = bike_folds, grid = rf_grid, metrics = me
 
 Now we have created a tuned model of 4 different types, we will now select using rmse to extract the best parameters for each model
 ```{r}
-
+best_lasso <- select_best(lasso_tune, "rmse")
+best_tree <- select_best(tree_tune, "rmse")
+best_bag <- select_best(bag_tune, "rmse")
+best_rf <- select_best(rf_tune, "rmse")
 ```
