@@ -367,4 +367,13 @@ results_lm <- collect_metrics(final_fit_lm) |>
   mutate(model = "Linear Regression (MLR)")
 results_lasso <- evaluate_model(final_fit_lasso, "LASSO Regression")
 results_tree <- evaluate_model(final_fit_tree, "Regression Tree")
+results_bag <- evaluate_model(final_fit_bag, "Bagged Tree")
+results_rf <- evaluate_model(final_fit_rf, "Random Forest")
+
+#Combine and arrange the results for ease of viewing
+all_results <- bind_rows(results_lm, results_lasso, results_tree, results_bag, results_rf)
+all_results_summary <- all_results |> arrange(.metric)
+print(all_results_summary)
 ```
+
+Based on this comparison, the model with both the lowest rmse and mae is the random forest model.
