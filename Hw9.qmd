@@ -304,3 +304,24 @@ bag_grid <- grid_random(
 
 bag_tune <- tune_grid(bag_wf, resamples = bike_folds, grid = bag_grid, metrics = metric_set(rmse, rsq))
 ```
+
+Again, but now with a Random Forest model
+```{r}
+rf_spec <- rand_forest(mtry = tune(), min_n = tune(), trees = 1000) |>
+  set_engine("ranger") |>
+  set_mode("regression")
+
+rf_wf <- workflow() |> add_model(rf_spec) |> add_recipe(bike_rec)
+rf_grid <- grid_random(
+  mtry(range = c(1L, 10L)),
+  min_n(range = c(2L, 50L)),
+  size = 30
+)
+
+rf_tune <- tune_grid(rf_wf, resamples = bike_folds, grid = rf_grid, metrics = metric_set(rmse, rsq))
+```
+
+Lastly, we will include the best MLR model from Hw 8 for comparison
+```{r}
+
+```
