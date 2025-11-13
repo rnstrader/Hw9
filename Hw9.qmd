@@ -377,3 +377,27 @@ print(all_results_summary)
 ```
 
 Based on this comparison, the model with both the lowest rmse and mae is the random forest model, making it the overall best model.
+
+Next we will extract the final model fits and display them in differing ways depending on the model
+```{r}
+#Extract final coefficients (MLR and LASSO Model)
+final_mlr <- final_fit |> extract_fit_parsnip()
+mlr_coefs <- tidy(final_mlr)
+mlr_coefs
+
+final_lasso <- final_fit_lasso |> extract_fit_parsnip()
+lasso_coefs <- tidy(final_lasso)
+lasso_coefs
+
+#Plotting the final tree
+library(rpart.plot)
+final_tree <- final_fit_tree |> extract_fit_parsnip()
+rpart.plot(final_tree$fit, fallen.leaves = TRUE, cex = 0.7)
+
+#Variable importance plot for bagged tree model and random forest model
+library(vip)
+final_bag <- final_fit_bag |> extract_fit_parsnip()
+vip(final_bag$fit, num_features = 15)
+
+
+```
