@@ -399,5 +399,13 @@ library(vip)
 final_bag <- final_fit_bag |> extract_fit_parsnip()
 vip(final_bag$fit, num_features = 15)
 
-
+final_rf <- final_fit_rf |> extract_fit_parsnip()
+rf_model <- final_rf$fit
+rf_importance <- tibble(
+  variable = names(rf_model$variable.importance),
+  importance = rf_model$variable.importance
+) |>
+  arrange(desc(importance))
+rf_importance |> slice_head(n = 20) |>
+  ggplot(aes(x = importance, y = reorder(variable, importance))) + geom_col() + labs(title = "Random Forest Variable Importance", x = "Importance", y = "Variable") + theme_minimal()
 ```
