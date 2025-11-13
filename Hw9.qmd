@@ -425,3 +425,16 @@ rf_importance <- tibble(
 rf_importance |> slice_head(n = 20) |>
   ggplot(aes(x = importance, y = reorder(variable, importance))) + geom_col() + labs(title = "Random Forest Variable Importance", x = "Importance", y = "Variable") + theme_minimal()
 ```
+
+Lastly, we will fit the random forest model (the best one) to all of the data.
+```{r}
+final_rf_all <- final_rf_wf|> 
+  fit(data = daily_bike)
+rf_final_fit <- final_rf_all |> extract_fit_parsnip()
+rf_final_fit
+
+rf_final_importance <- tibble(
+  variable = names(rf_final_fit$fit$variable.importance), importance = rf_final_fit$fit$variable.importance
+) |> 
+  arrange(desc(importance))
+```
