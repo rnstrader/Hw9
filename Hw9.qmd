@@ -309,7 +309,7 @@ bag_tune <- tune_grid(bag_wf, resamples = bike_folds, grid = bag_grid, metrics =
 Again, but now with a Random Forest model
 ```{r}
 rf_spec <- rand_forest(mtry = tune(), min_n = tune(), trees = 1000) |>
-  set_engine("ranger") |>
+  set_engine("ranger", importance = "impurity") |>
   set_mode("regression")
 
 rf_wf <- workflow() |> add_model(rf_spec) |> add_recipe(bike_rec)
@@ -394,11 +394,26 @@ library(rpart.plot)
 final_tree <- final_fit_tree |> extract_fit_parsnip()
 rpart.plot(final_tree$fit, fallen.leaves = TRUE, cex = 0.7)
 
-#Variable importance plot for bagged tree model and random forest model
+#Variable importance plot for bagged tree model
 library(vip)
 final_bag <- final_fit_bag |> extract_fit_parsnip()
-vip(final_bag$fit, num_features = 15)
 
+#baking the training data so the columns match what the model expects
+rec <- final_fit_bag |> extract_recipe()
+train_processed <- bake(rec, new_data = bike_train)
+
+#seperating predictors and outcomes
+train_x <- train_processed |> select(-total_bike_count)
+train_y <- train_processed$total_bike_count
+
+#continuing to the variable importance plot for the bagged tree model
+bag_pred <- function(object, newdata) {
+  predict(object, new_data = newdata) |>
+    pull(.pred)
+}
+vip(final_bag, method = "permute", train = train_x, target = train_y, metric = "rmse", pred_wrapper = bag_pred, num_features = 15)
+
+#Variable importance plot for random forest model
 final_rf <- final_fit_rf |> extract_fit_parsnip()
 rf_model <- final_rf$fit
 rf_importance <- tibble(
@@ -406,6 +421,7 @@ rf_importance <- tibble(
   importance = rf_model$variable.importance
 ) |>
   arrange(desc(importance))
+
 rf_importance |> slice_head(n = 20) |>
   ggplot(aes(x = importance, y = reorder(variable, importance))) + geom_col() + labs(title = "Random Forest Variable Importance", x = "Importance", y = "Variable") + theme_minimal()
 ```
